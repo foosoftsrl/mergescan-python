@@ -43,6 +43,7 @@ ext_modules = [
            f"{builddir}/sysroot/include/open3d"
            ],
         extra_link_args=[
+           "-Wl,-Bsymbolic",
            f"-L{builddir}/sysroot/lib",
            f"-L{builddir}/sysroot/lib64",
            "-lOpen3D",
@@ -54,7 +55,8 @@ ext_modules = [
            "-lOpen3D_3rdparty_jsoncpp",
            "-lstdc++fs",
            "-lgomp",
-           "-lswscale"
+           "-lswscale",
+           "-lavutil"
            ]
         ),
 ]

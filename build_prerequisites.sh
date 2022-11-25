@@ -10,6 +10,17 @@ if [[ "$(uname)" == 'Darwin' ]]; then
   alias nproc="sysctl -n hw.logicalcpu" # As opposed to `hw.physicalcpu`
 fi
 
+function checkout_ffmpeg() {
+  pushd $BUILDDIR
+  if [ ! -d "FFmpeg" ] ; then
+    git clone https://github.com/FFmpeg/FFmpeg.git
+  fi
+  cd FFmpeg
+  git checkout release/5.1
+  popd
+
+}
+
 function checkout_open3d() {
   pushd $BUILDDIR
   if [ ! -d "Open3D" ] ; then
@@ -33,10 +44,24 @@ function build_open3d() {
   make -j$(nproc) install
   #We want a static build, let's remove all shared objects
   #Note that we must delete lib64 for Centos
-  rm -f $BUILDDIR/sysroot/lib*/*dylib $BUILDDIR/sysroot/lib*/*so
+  #rm -f $BUILDDIR/sysroot/lib*/*dylib $BUILDDIR/sysroot/lib*/*so
   popd
 }
 
+function build_ffmpeg() {
+  pushd $BUILDDIR/FFmpeg
+  mkdir -p build
+  cd build
+  ../configure --prefix=$BUILDDIR/sysroot --disable-avcodec --disable-avformat --disable-avfilter --disable-swresample --extra-cflags="-fPIC"
+  make -j$(nproc) install
+  #We want a static build, let's remove all shared objects
+  #Note that we must delete lib64 for Centos
+  #rm -f $BUILDDIR/sysroot/lib*/*dylib $BUILDDIR/sysroot/lib*/*so
+  popd
+}
+
+checkout_ffmpeg
+build_ffmpeg
 checkout_open3d
 build_open3d
 
