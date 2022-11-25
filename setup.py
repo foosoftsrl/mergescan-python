@@ -67,11 +67,7 @@ setup(name='mergescan',
       license='MIT License',
       author='Luca Piccarreta',
       author_email='luca@topologyeyewaer.com',
-      packages=['mergescan'],
-      package_data={
-          'jxlpy': ['*.pyx', '*.py'],
-          '': ['README.md']
-      },
+      packages=[],
       include_package_data=True,
       install_requires=['cython'],
       extras_require={'pillow': ['Pillow']},
