@@ -35,7 +35,7 @@ extra_link_args = []
 # On Linux, we need -Wl,-Bsymbolic in order to statically link ffmpeg.
 # See https://stackoverflow.com/questions/44379426/building-shared-library-with-ffmpeg-results-in-relocation-error
 if platform.system() == "Linux":
-    extra_link_args_system_specific += [
+    extra_link_args += [
       "-Wl,-Bsymbolic",
     ]
 
