@@ -4,6 +4,8 @@ from distutils.command import build as build_module
 import os
 import subprocess
 import platform
+from pybind11 import get_cmake_dir
+from pybind11.setup_helpers import Pybind11Extension, build_ext
 
 machine=platform.machine()
 print(f"platform machine={machine}")
@@ -29,19 +31,33 @@ class build(build_module.build):
 with open("README.md", 'r') as f:
     long_description = f.read()
 
-jxlpy_ext = Extension(
-    name="_jxlpy",
-    sources=["_jxlpy/_jxl.pyx"],
-    include_dirs=[f"{builddir}/sysroot/include"],
-    extra_compile_args=['-O2'],
-    extra_link_args=[
-        f"-L{builddir}/sysroot/lib",
-        f"-L{builddir}/sysroot/lib64",
-        "-ljxl","-ljxl_threads","-lbrotlidec-static","-lbrotlienc-static","-lbrotlicommon-static","-lhwy"],
-    language='c++',
-)
-
-
+ext_modules = [
+    Pybind11Extension("mergescan",
+        ["src/main.cpp", "src/ThreadPool.cpp"],
+        # Example: passing in the version to the compiled code
+        #define_macros = [('VERSION_INFO', __version__)],
+        cxx_std=17,
+        include_dirs=[
+           f"{builddir}/sysroot/include",
+           f"{builddir}/sysroot/include/open3d/3rdparty",
+           f"{builddir}/sysroot/include/open3d"
+           ],
+        extra_link_args=[
+           f"-L{builddir}/sysroot/lib",
+           f"-L{builddir}/sysroot/lib64",
+           "-lOpen3D",
+           "-lOpen3D_3rdparty_qhullcpp",
+           "-lOpen3D_3rdparty_qhull_r",
+           "-lOpen3D_3rdparty_jpeg",
+           "-lOpen3D_3rdparty_png",
+           "-lOpen3D_3rdparty_zlib",
+           "-lOpen3D_3rdparty_jsoncpp",
+           "-lstdc++fs",
+           "-lgomp",
+           "-lswscale"
+           ]
+        ),
+]
 setup(name='mergescan',
       version='0.0.0',
       description='Mergescan native module',
@@ -59,7 +75,7 @@ setup(name='mergescan',
       install_requires=['cython'],
       extras_require={'pillow': ['Pillow']},
       python_requires='>=3.4',
-      ext_modules=cythonize([jxlpy_ext]),
+      ext_modules=ext_modules,
       cmdclass = {
         'build': build,
       },
