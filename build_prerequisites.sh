@@ -28,6 +28,9 @@ function checkout_open3d() {
   fi
   cd Open3D
   git checkout v0.16.1
+  # This makes no sense... it will fail if we compile twice
+  # I may git reset hard
+  git apply "$BUILDDIR/open3d.patch"
   popd
 }
 

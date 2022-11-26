@@ -1,6 +1,7 @@
 from setuptools import Extension, setup
 from distutils.command import build as build_module
 import os
+import shutil
 import subprocess
 import platform
 from pybind11 import get_cmake_dir
@@ -23,6 +24,7 @@ builddir=os.getcwd() + f"/build/{machine}"
 class build(build_module.build):
   def run(self):
     os.makedirs(builddir,exist_ok=True)
+    shutil.copyfile("patch.open3d", builddir)
     p = subprocess.Popen(["bash", buildscript, machine], cwd=builddir)
     p.wait()
     build_module.build.run(self)
