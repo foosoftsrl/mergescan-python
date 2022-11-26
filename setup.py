@@ -30,6 +30,43 @@ class build(build_module.build):
 with open("README.md", 'r') as f:
     long_description = f.read()
 
+extra_link_args = []
+
+# On Linux, we need -Wl,-Bsymbolic in order to statically link ffmpeg.
+# See https://stackoverflow.com/questions/44379426/building-shared-library-with-ffmpeg-results-in-relocation-error
+if platform.system() == "Linux":
+    extra_link_args_system_specific += [
+      "-Wl,-Bsymbolic",
+    ]
+
+extra_link_args+=[
+    f"-L{builddir}/sysroot/lib",
+    f"-L{builddir}/sysroot/lib64",
+    "-lOpen3D",
+    "-lOpen3D_3rdparty_qhullcpp",
+    "-lOpen3D_3rdparty_qhull_r",
+    "-lOpen3D_3rdparty_jpeg",
+    "-lOpen3D_3rdparty_png",
+    "-lOpen3D_3rdparty_zlib",
+    "-lOpen3D_3rdparty_jsoncpp",
+    "-lswscale",
+    "-lavutil"
+]
+
+if platform.system() == "Linux":
+    extra_link_args += [
+      "-lstdc++fs",
+      "-lgomp",
+    ]
+
+if platform.system() == "Darwin":
+  extra_link_args +=[
+    "-framework","CoreFoundation",
+    "-framework","CoreVideo"
+    ]
+
+print(f"extra_link_args = {extra_link_args}")
+
 ext_modules = [
     Pybind11Extension("mergescan",
         ["src/main.cpp", "src/ThreadPool.cpp"],
@@ -41,24 +78,10 @@ ext_modules = [
            f"{builddir}/sysroot/include/open3d/3rdparty",
            f"{builddir}/sysroot/include/open3d"
            ],
-        extra_link_args=[
-           "-Wl,-Bsymbolic",
-           f"-L{builddir}/sysroot/lib",
-           f"-L{builddir}/sysroot/lib64",
-           "-lOpen3D",
-           "-lOpen3D_3rdparty_qhullcpp",
-           "-lOpen3D_3rdparty_qhull_r",
-           "-lOpen3D_3rdparty_jpeg",
-           "-lOpen3D_3rdparty_png",
-           "-lOpen3D_3rdparty_zlib",
-           "-lOpen3D_3rdparty_jsoncpp",
-           "-lstdc++fs",
-           "-lgomp",
-           "-lswscale",
-           "-lavutil"
-           ]
+        extra_link_args = extra_link_args
         ),
 ]
+
 setup(name='mergescan',
       version='0.0.0',
       description='Mergescan native module',

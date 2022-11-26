@@ -61,6 +61,8 @@ function build_ffmpeg() {
   pushd $BUILDDIR/FFmpeg
   mkdir -p build
   cd build
+  # I could use --enable-pic instead of --extra-cflags="-fPIC"
+  # I've no idea if this -fPIC is needed for macos
   ../configure --prefix=$BUILDDIR/sysroot --disable-avcodec --disable-avformat --disable-avfilter --disable-swresample --extra-cflags="-fPIC"
   make -j$(nproc) install
   #We want a static build, let's remove all shared objects

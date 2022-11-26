@@ -37,7 +37,7 @@ static py::array_t<T> makePyArray(const T* data, int size) {
     // memory when destroyed:
     std::unique_ptr<T[]> copy(new T[size]);
     memcpy(copy.get(), data, size * sizeof(T));
-    py::capsule free_when_done(data.get(), [](void *f) {
+    py::capsule free_when_done(copy.get(), [](void *f) {
         T *dataPtr = reinterpret_cast<T *>(f);
         delete[] dataPtr;
     });
