@@ -8,8 +8,10 @@ echo builddir=$BUILDDIR
 
 if [[ "$(uname)" == 'Darwin' ]]; then
   NPROC=$(sysctl -n hw.logicalcpu) # As opposed to `hw.physicalcpu`
+  ARCHFLAGS="-arch $ARCHITECTURE"
 else
   NPROC=$(nproc)
+  ARCHFLAGS=""
 fi
 
 function checkout_ffmpeg() {
@@ -45,15 +47,16 @@ function build_open3d() {
   cmake -DCMAKE_MACOSX_RPATH=0 -DCMAKE_CXX_FLAGS="-I $BUILDDIR/libjxl/lib/include/jxl" \
           -DCMAKE_OSX_ARCHITECTURES=$ARCHITECTURE \
           -DBUILD_GUI=OFF \
-	  -DBUILD_PYTHON_MODULE=OFF \
+          -DBUILD_PYTHON_MODULE=OFF \
           -DWITH_OPENMP=ON \
           -DWITH_SIMD=ON \
           -DBUILD_EXAMPLES=OFF \
           -DBUILD_JUPYTER_EXTENSION=OFF \
           -DBUILD_WEBRTC=OFF \
           -DDEVELOPER_BUILD=OFF \
-          -DBUILD_COMMON_ISPC_ISAS=ON \
           -DUSE_SYSTEM_BLAS=OFF \
+          -DBUILD_ISPC_MODULE=OFF \
+          -DBUILD_COMMON_ISPC_ISAS=OFF \
           -DGLIBCXX_USE_CXX11_ABI=1 \
           -DCMAKE_INSTALL_PREFIX=$BUILDDIR/sysroot ..
   make -j$NPROC install
@@ -69,17 +72,22 @@ function build_ffmpeg() {
   cd build
   # I could use --enable-pic instead of --extra-cflags="-fPIC"
   # I've no idea if this -fPIC is needed for macos
-  ../configure \
-     --prefix=$BUILDDIR/sysroot \
-     --arch=$ARCHITECTURE \
-     --enable-cross-compile \
-     --extra-cflags="-arch $ARCHITECTURE -fPIC" \
-     --extra-ldflags="-arch $ARCHITECTURE" \
-     --target-os=darwin \
-     --disable-avcodec \
-     --disable-avformat \
-     --disable-avfilter \
+  CONFIGOPTIONS=(
+     --prefix=$BUILDDIR/sysroot
+     --arch=$ARCHITECTURE
+     --enable-cross-compile
+     --extra-cflags="$ARCHFLAGS -fPIC"
+     --extra-ldflags="$ARCHFLAGS"
+     --disable-avcodec
+     --disable-avformat
+     --disable-avfilter
      --disable-swresample
+  )
+  # Probably this is needed because we're "cross-compiling" on macos
+  if [[ "$(uname)" == 'Darwin' ]]; then
+    CONFIGOPTIONS += "--target-os=darwin"
+
+  ../configure ${CONFIGOPTIONS[@]}
   make V=1 -j$NPROC install
   #We want a static build, let's remove all shared objects
   #Note that we must delete lib64 for Centos

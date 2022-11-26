@@ -27,7 +27,7 @@ jobs:
         CIBW_BEFORE_ALL_LINUX: yum install -y devtoolset-10-libatomic-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel mesa-libGLU-devel
         CIBW_BUILD_VERBOSITY_LINUX: 3
         CIBW_BUILD_VERBOSITY_MACOS: 3
-        CIBW_ARCHS_MACOS: "x86_64 arm64"
+        CIBW_ARCHS_MACOS: "arm64 x86_64"
     - uses: actions/upload-artifact@v3
       with:
         name: wheelhouse-${{ matrix.os }}
