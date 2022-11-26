@@ -86,7 +86,8 @@ function build_ffmpeg() {
   # Probably this is needed because we're "cross-compiling" on macos
   if [[ "$(uname)" == 'Darwin' ]]; then
     CONFIGOPTIONS += "--target-os=darwin"
-
+  fi
+  
   ../configure ${CONFIGOPTIONS[@]}
   make V=1 -j$NPROC install
   #We want a static build, let's remove all shared objects
