@@ -7,7 +7,9 @@ ARCHITECTURE=$1
 echo builddir=$BUILDDIR
 
 if [[ "$(uname)" == 'Darwin' ]]; then
-  alias nproc="sysctl -n hw.logicalcpu" # As opposed to `hw.physicalcpu`
+  NPROC=$(sysctl -n hw.logicalcpu) # As opposed to `hw.physicalcpu`
+else
+  NPROC=$(nproc)
 fi
 
 function checkout_ffmpeg() {
@@ -54,7 +56,7 @@ function build_open3d() {
           -DUSE_SYSTEM_BLAS=OFF \
           -DGLIBCXX_USE_CXX11_ABI=1 \
           -DCMAKE_INSTALL_PREFIX=$BUILDDIR/sysroot ..
-  make -j$(nproc) install
+  make -j$NPROC install
   #We want a static build, let's remove all shared objects
   #Note that we must delete lib64 for Centos
   #rm -f $BUILDDIR/sysroot/lib*/*dylib $BUILDDIR/sysroot/lib*/*so
@@ -67,8 +69,18 @@ function build_ffmpeg() {
   cd build
   # I could use --enable-pic instead of --extra-cflags="-fPIC"
   # I've no idea if this -fPIC is needed for macos
-  ../configure --prefix=$BUILDDIR/sysroot --disable-avcodec --disable-avformat --disable-avfilter --disable-swresample --extra-cflags="-fPIC"
-  make -j$(nproc) install
+  ../configure \
+     --prefix=$BUILDDIR/sysroot \
+     --arch=$ARCHITECTURE \
+     --enable-cross-compile \
+     --extra-cflags="-arch $ARCHITECTURE -fPIC" \
+     --extra-ldflags="-arch $ARCHITECTURE" \
+     --target-os=darwin \
+     --disable-avcodec \
+     --disable-avformat \
+     --disable-avfilter \
+     --disable-swresample
+  make V=1 -j$NPROC install
   #We want a static build, let's remove all shared objects
   #Note that we must delete lib64 for Centos
   #rm -f $BUILDDIR/sysroot/lib*/*dylib $BUILDDIR/sysroot/lib*/*so

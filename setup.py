@@ -15,6 +15,8 @@ archflags = os.environ.get("ARCHFLAGS", None)
 print(f"archflags={archflags}")
 if archflags == "-arch arm64":
   machine="arm64"
+elif archflags == "-arch x86_64":
+  machine="x86_64"
 print(f"target machine={machine}")
 
 buildscript=os.getcwd() + "/build_prerequisites.sh"
