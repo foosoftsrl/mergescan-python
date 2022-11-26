@@ -24,7 +24,7 @@ builddir=os.getcwd() + f"/build/{machine}"
 class build(build_module.build):
   def run(self):
     os.makedirs(builddir,exist_ok=True)
-    shutil.copyfile("patch.open3d", builddir)
+    shutil.copyfile("open3d.patch", f"{builddir}/open3d.patch")
     p = subprocess.Popen(["bash", buildscript, machine], cwd=builddir)
     p.wait()
     build_module.build.run(self)
