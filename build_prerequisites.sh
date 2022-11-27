@@ -28,14 +28,10 @@ function checkout_ffmpeg() {
 function checkout_open3d() {
   pushd $BUILDDIR
   if [ ! -d "Open3D" ] ; then
-    git clone https://github.com/isl-org/Open3D.git
+    git clone https://github.com/foosoftsrl/Open3D.git
   fi
   cd Open3D
-  git checkout v0.16.1
-  # This makes no sense... it will fail if we compile twice
-  # I may git reset hard
-  git reset --hard
-  git apply "$BUILDDIR/open3d.patch"
+  git checkout v0.16.1-patched
   popd
 }
 
