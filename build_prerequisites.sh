@@ -55,7 +55,7 @@ function build_open3d() {
           -DBUILD_COMMON_ISPC_ISAS=OFF \
           -DGLIBCXX_USE_CXX11_ABI=1 \
           -DCMAKE_INSTALL_PREFIX=$BUILDDIR/sysroot ..
-  make -j$NPROC install
+  make -j$NPROC install VERBOSE=1 
   #We want a static build, let's remove all shared objects
   #Note that we must delete lib64 for Centos
   #rm -f $BUILDDIR/sysroot/lib*/*dylib $BUILDDIR/sysroot/lib*/*so
