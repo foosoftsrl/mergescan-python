@@ -73,7 +73,7 @@ function build_ffmpeg() {
   # I could use --enable-pic instead of --extra-cflags="-fPIC"
   # I've no idea if this -fPIC is needed for macos
   CONFIGOPTIONS=(
-     --prefix=$BUILDDIR/sysroot
+     --prefix="$BUILDDIR/sysroot"
      --arch=$ARCHITECTURE
      --enable-cross-compile
      --extra-cflags="$ARCHFLAGS -fPIC"
@@ -85,10 +85,11 @@ function build_ffmpeg() {
   )
   # Probably this is needed because we're "cross-compiling" on macos
   if [[ "$(uname)" == 'Darwin' ]]; then
-    CONFIGOPTIONS += "--target-os=darwin"
+    CONFIGOPTIONS+=("--target-os=darwin")
   fi
-  
-  ../configure ${CONFIGOPTIONS[@]}
+
+  #arrays are expanded to a series of "" delimited arguments  
+  ../configure "${CONFIGOPTIONS[@]}"
   make V=1 -j$NPROC install
   #We want a static build, let's remove all shared objects
   #Note that we must delete lib64 for Centos
