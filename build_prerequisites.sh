@@ -30,14 +30,12 @@ function checkout_open3d() {
   if [ ! -d "Open3D" ] ; then
     git clone https://github.com/foosoftsrl/Open3D.git
   fi
-  cd Open3D
-  git checkout v0.16.1-patched
   popd
 }
 
 function build_open3d() {
   pushd $BUILDDIR/Open3D
-  git checkout v0.16.1
+  git checkout v0.16.1-patched
   mkdir -p build
   cd build
   cmake -DCMAKE_MACOSX_RPATH=0 -DCMAKE_CXX_FLAGS="-I $BUILDDIR/libjxl/lib/include/jxl" \
