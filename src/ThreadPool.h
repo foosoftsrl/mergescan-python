@@ -113,22 +113,12 @@ public:
     ~ThreadPool();
 
     /// @brief submit a task with optional dependencies
-#if 0
     template <class F, typename... Args>
     auto submit(F&& func, Args&... dependsOn) {
         using return_type = typename std::invoke_result<F>::type;
         auto future = JoinableFuture<return_type>::withDepends(dependsOn...);
         return submitToFuture(func, future);
     }
-#else
-    template <class F, typename... Args>
-    auto submit(F&& func, Args&... dependsOn) {
-        using return_type = typename std::invoke_result<F>::type;
-        auto future = JoinableFuture<return_type>::withDepends(dependsOn...);
-	future.setValue(func());
-	return future;
-    }
-#endif
 
     
 private:

@@ -15,6 +15,7 @@
 #include <geometry/Image.h>
 #include <geometry/RGBDImage.h>
 #include <geometry/PointCloud.h>
+#include <geometry/TriangleMesh.h>
 
 extern "C" {
 #include <libswscale/swscale.h>
@@ -26,6 +27,9 @@ extern "C" {
 using namespace std;
 using namespace open3d;
 namespace py = pybind11;
+
+namespace mergescan {
+
 
 // Create a Python object that will free the allocated memory when destroyed:
 template <class T>
@@ -139,8 +143,8 @@ struct DepthImage : public std::shared_ptr<geometry::Image> {
   }
 };
 
-struct Image : public std::shared_ptr<geometry::Image> {
-  Image(std::shared_ptr<geometry::Image>&& future) 
+struct RgbImage : public std::shared_ptr<geometry::Image> {
+  RgbImage(std::shared_ptr<geometry::Image>&& future) 
 	  : std::shared_ptr<geometry::Image>(future) 
   {
   }
@@ -157,7 +161,7 @@ struct Image : public std::shared_ptr<geometry::Image> {
     return makePyArray((uint8_t*)get()->data_.data(), width(), height(), get()->num_of_channels_);
   }
 
-  static Image load(const std::string& path) {
+  static RgbImage load(const std::string& path) {
       pybind11::gil_scoped_release release;
       geometry::Image img;
       if(!io::ReadImageFromJPG(path, img)) {
@@ -172,7 +176,7 @@ struct Image : public std::shared_ptr<geometry::Image> {
       return std::make_shared<geometry::Image>(std::move(img));
   }
 
-  Image resize(int width, int height) {
+  RgbImage resize(int width, int height) {
       pybind11::gil_scoped_release release;
       geometry::Image img;
       img.Prepare(width, height, 3, 1);
@@ -187,13 +191,147 @@ struct Image : public std::shared_ptr<geometry::Image> {
   }
 };
 
+struct TriangleMesh : public std::shared_ptr<geometry::TriangleMesh> {
+  TriangleMesh() : TriangleMesh(std::make_shared<geometry::TriangleMesh>()){
+  }
+
+  TriangleMesh(std::shared_ptr<geometry::TriangleMesh> &&ptr) : std::shared_ptr<geometry::TriangleMesh>(ptr)
+  {
+  }
+
+  py::array_t<double> vertices()
+  {
+    auto &vertices = (*this)->vertices_;
+    return makePyArray((const double *)vertices.data(), 3, vertices.size());
+  }
+
+  py::array_t<int> triangles()
+  {
+    auto &triangles = (*this)->triangles_;
+    return makePyArray((const int *)triangles.data(), 3, triangles.size());
+  }
+
+  py::array_t<double> vertex_colors()
+  {
+    auto &vertex_colors = (*this)->vertex_colors_;
+    return makePyArray((const double*)vertex_colors.data(), 3, vertex_colors.size());
+  }
+
+  static TriangleMesh fromValues(
+    std::vector<Eigen::Vector3d>& vertices,
+    std::vector<Eigen::Vector3i>& triangles,
+    std::vector<Eigen::Vector3d>& vertex_colors) {
+      pybind11::gil_scoped_release release;
+      TriangleMesh mesh;
+      std::swap(mesh->vertices_,vertices);
+      std::swap(mesh->triangles_,triangles);
+      std::swap(mesh->vertex_colors_,vertex_colors);
+      return mesh;
+  }
+
+  TriangleMesh FilterSmoothTaubin(int number_of_iterations, double lambda_filter, double mu) {
+    pybind11::gil_scoped_release release;
+    auto filtered = (*this)->FilterSmoothTaubin(number_of_iterations, lambda_filter, mu);
+    for(auto& color: filtered->vertex_colors_) {
+      color[0] = std::max(0.0, std::min(1.0, color[0]));
+      color[1] = std::max(0.0, std::min(1.0, color[1]));
+      color[2] = std::max(0.0, std::min(1.0, color[2]));
+    }
+    return filtered;
+  }
+
+  TriangleMesh simplify() {
+    pybind11::gil_scoped_release release;
+    TriangleMesh mesh;
+    mesh->vertices_ = (*this)->vertices_;
+    mesh->triangles_ = (*this)->triangles_;
+    mesh->vertex_colors_ = (*this)->vertex_colors_;
+    mesh->triangle_uvs_ = (*this)->triangle_uvs_;
+    mesh->RemoveDuplicatedVertices();
+    mesh->RemoveDuplicatedTriangles();
+    return mesh;
+  }
+
+  TriangleMesh transform(const Eigen::Matrix4d &transformation) {
+    TriangleMesh mesh;
+    mesh->vertices_ = (*this)->vertices_;
+    mesh->triangles_ = (*this)->triangles_;
+    mesh->vertex_colors_ = (*this)->vertex_colors_;
+    mesh->triangle_uvs_ = (*this)->triangle_uvs_;
+    mesh->Transform(transformation);
+    return mesh;
+  }
+
+  TriangleMesh with_triangle_uvs(std::vector<Eigen::Vector2d>& triangle_uvs) {
+    TriangleMesh mesh;
+    mesh->vertices_ = (*this)->vertices_;
+    mesh->triangles_ = (*this)->triangles_;
+    mesh->vertex_colors_ = (*this)->vertex_colors_;
+    std::swap(mesh->triangle_uvs_, triangle_uvs);
+    return mesh;
+  }
+};
+
 struct PointCloud : public std::shared_ptr<geometry::PointCloud> {
-  PointCloud() {
+  PointCloud() : PointCloud(std::make_shared<geometry::PointCloud>()){
 
   }
 
   PointCloud(std::shared_ptr<geometry::PointCloud> &&future) : std::shared_ptr<geometry::PointCloud>(future)
   {
+  }
+
+  static PointCloud fromValues2(
+    py::array_t<double, py::array::c_style> points,
+    py::array_t<double, py::array::c_style> normals,
+    py::array_t<double, py::array::c_style> colors) {
+      pybind11::gil_scoped_release release;
+      PointCloud pointCloud;
+    if(points.ndim() != 2)
+      throw std::runtime_error("PointCloud::fromValues points must be a bidimensional array");
+    if(normals.ndim() != 2)
+      throw std::runtime_error("PointCloud::fromValues normals must be a bidimensional array");
+    if(colors.ndim() != 2)
+      throw std::runtime_error("PointCloud::fromValues colors must be a bidimensional array");
+    py::buffer_info pointsBuf = points.request();
+    py::buffer_info normalsBuf = normals.request();
+    py::buffer_info colorsBuf = colors.request();
+    if(pointsBuf.shape[1] != 3)
+      throw std::runtime_error("PointCloud::fromValues points must be a bidimensional array of 3 doubles");
+    if(normalsBuf.shape[1] != 3)
+      throw std::runtime_error("PointCloud::fromValues normals must be a bidimensional array of 3 doubles");
+    if(colorsBuf.shape[1] != 3)
+      throw std::runtime_error("PointCloud::fromValues colors must be a bidimensional array of 3 doubles");
+    
+    fprintf(stderr, "points shape: %d %d\n", (int)pointsBuf.shape[1], (int)pointsBuf.shape[0]);
+    fprintf(stderr, "normals shape: %d %d\n", (int)normalsBuf.shape[1], (int)normalsBuf.shape[0]);
+    fprintf(stderr, "colors shape: %d %d\n", (int)colorsBuf.shape[1], (int)colorsBuf.shape[0]);
+    return pointCloud;
+  }
+
+  static PointCloud fromValues(
+    std::vector<Eigen::Vector3d>& points,
+    std::vector<Eigen::Vector3d>& normals,
+    std::vector<Eigen::Vector3d>& colors) {
+      pybind11::gil_scoped_release release;
+      PointCloud pointCloud;
+      std::swap(pointCloud->points_,points);
+      std::swap(pointCloud->normals_,normals);
+      std::swap(pointCloud->colors_,colors);
+      return pointCloud;
+  }
+
+  static PointCloud fromDepth(DepthImage depth, double width, double height, double fx, double fy, double cx, double cy) {
+    pybind11::gil_scoped_release release;
+    camera::PinholeCameraIntrinsic intrinsics(width,height,fx,fy,cx,cy);
+    return geometry::PointCloud::CreateFromDepthImage((*depth), intrinsics, Eigen::Matrix4d::Identity());
+  }
+
+  static PointCloud fromRGBD(RgbImage img, DepthImage depth, double width, double height, double fx, double fy, double cx, double cy) {
+    pybind11::gil_scoped_release release;
+    camera::PinholeCameraIntrinsic intrinsics(width,height,fx,fy,cx,cy);
+    geometry::RGBDImage rgbd(*img, *depth);
+    return geometry::PointCloud::CreateFromRGBDImage(rgbd, intrinsics, Eigen::Matrix4d::Identity());
   }
 
   PointCloud removeStatisticalOutliers(int nb_neighbors, double std_ratio)
@@ -223,19 +361,6 @@ struct PointCloud : public std::shared_ptr<geometry::PointCloud> {
   size_t size()
   {
     return (*this)->points_.size();
-  }
-
-  static PointCloud fromDepth(DepthImage depth, double width, double height, double fx, double fy, double cx, double cy) {
-    pybind11::gil_scoped_release release;
-    camera::PinholeCameraIntrinsic intrinsics(width,height,fx,fy,cx,cy);
-    return geometry::PointCloud::CreateFromDepthImage((*depth), intrinsics, Eigen::Matrix4d::Identity());
-  }
-
-  static PointCloud fromRGBD(Image img, DepthImage depth, double width, double height, double fx, double fy, double cx, double cy) {
-    pybind11::gil_scoped_release release;
-    camera::PinholeCameraIntrinsic intrinsics(width,height,fx,fy,cx,cy);
-    geometry::RGBDImage rgbd(*img, *depth);
-    return geometry::PointCloud::CreateFromRGBDImage(rgbd, intrinsics, Eigen::Matrix4d::Identity());
   }
 
   friend PointCloud operator+(PointCloud p1, PointCloud p2) {
@@ -448,7 +573,39 @@ PYBIND11_MODULE(mergescan, m) {
                           &open3d::pipelines::registration::ICPConvergenceCriteria::max_iteration_,
                           "Maximum iteration before iteration stops.");
 
+    py::class_<TriangleMesh>(m, "TriangleMesh")
+      .def_static("fromValues", &TriangleMesh::fromValues, py::return_value_policy::copy,
+        py::arg("vertices"),
+        py::arg("triangles"),
+        py::arg("vertex_colors"))
+      .def_property_readonly("vertices", &TriangleMesh::vertices)
+      .def_property_readonly("triangles", &TriangleMesh::triangles)
+      .def_property_readonly("vertex_colors", &TriangleMesh::vertex_colors)
+      .def("filter_smooth_taubin", &TriangleMesh::FilterSmoothTaubin,
+            "Function to smooth triangle mesh using method of Taubin, "
+            "\"Curve and Surface Smoothing Without Shrinkage\", 1995. "
+            "Applies in each iteration two times filter_smooth_laplacian, "
+            "first with filter parameter lambda_filter and second with "
+            "filter "
+            "parameter mu as smoothing parameter. This method avoids "
+            "shrinkage of the triangle mesh.",
+        py::arg("number_of_iterations") = 1,
+        py::arg("lambda_filter") = 0.5,
+        py::arg("mu") = -0.53)
+      .def("simplify", &TriangleMesh::simplify)
+      .def("transform", &TriangleMesh::transform)
+      .def("with_triangle_uvs", &TriangleMesh::with_triangle_uvs)
+      ;
+
     py::class_<PointCloud>(m, "PointCloud")
+      .def_static("fromValues", &PointCloud::fromValues, py::return_value_policy::copy,
+        py::arg("points"),
+        py::arg("normals"),
+        py::arg("colors"))
+      .def_static("fromValues2", &PointCloud::fromValues2, py::return_value_policy::copy,
+        py::arg("points"),
+        py::arg("normals"),
+        py::arg("colors"))
       .def_static("fromDepth", &PointCloud::fromDepth, py::return_value_policy::copy,
         py::arg("depth"),
         py::arg("width"),py::arg("height"),
@@ -466,12 +623,12 @@ PYBIND11_MODULE(mergescan, m) {
       .def_property_readonly("colors", &PointCloud::colors)
       .def(py::self + py::self)
       .def("crop", &PointCloud::crop,
-	   py::arg("minX") = std::numeric_limits<double>::lowest(),
-	   py::arg("minY") = std::numeric_limits<double>::lowest(),
-           py::arg("minZ") = std::numeric_limits<double>::lowest(),
-           py::arg("maxX") = std::numeric_limits<double>::max(),
-           py::arg("maxY") = std::numeric_limits<double>::max(),
-           py::arg("maxZ") = std::numeric_limits<double>::max())
+        py::arg("minX") = std::numeric_limits<double>::lowest(),
+        py::arg("minY") = std::numeric_limits<double>::lowest(),
+        py::arg("minZ") = std::numeric_limits<double>::lowest(),
+        py::arg("maxX") = std::numeric_limits<double>::max(),
+        py::arg("maxY") = std::numeric_limits<double>::max(),
+        py::arg("maxZ") = std::numeric_limits<double>::max())
       .def("transform", &PointCloud::transform)
       .def("estimateNormals", &PointCloud::estimateNormals,
         py::arg("radius") = 2.5,
@@ -481,6 +638,7 @@ PYBIND11_MODULE(mergescan, m) {
       .def("filterByNormalAngle", &PointCloud::filterByNormalAngle)
       .def("select_by_index", &PointCloud::selectByIndex)
       .def("voxelDownSample", &PointCloud::voxelDownSample)
+      .def("voxel_down_sample", &PointCloud::voxelDownSample)
       .def("randomDownSample", &PointCloud::randomDownSample)
       .def("randomDownSampleMax", &PointCloud::randomDownSampleMax)
       .def("removeStatisticalOutliers", &PointCloud::removeStatisticalOutliers,
@@ -495,12 +653,12 @@ PYBIND11_MODULE(mergescan, m) {
       .def_property_readonly("width", &DepthImage::width)
       .def_property_readonly("height", &DepthImage::height);
 
-    py::class_<Image>(m, "Image")
-      .def_static("load", &Image::load)
-      .def("resize", &Image::resize)
-      .def_property_readonly("data", &Image::data)
-      .def_property_readonly("width", &Image::width)
-      .def_property_readonly("height", &Image::height);
+    py::class_<RgbImage>(m, "Image")
+      .def_static("load", &RgbImage::load)
+      .def("resize", &RgbImage::resize)
+      .def_property_readonly("data", &RgbImage::data)
+      .def_property_readonly("width", &RgbImage::width)
+      .def_property_readonly("height", &RgbImage::height);
 
     py::class_<RegistrationResult>(m, "RegistrationResult")
       .def_property_readonly("transformation", &RegistrationResult::transformation)
@@ -513,3 +671,5 @@ PYBIND11_MODULE(mergescan, m) {
     m.attr("__version__") = "dev";
 #endif
 }
+
+} // mergescan namespace

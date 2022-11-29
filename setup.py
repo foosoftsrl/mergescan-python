@@ -72,7 +72,7 @@ print(f"extra_link_args = {extra_link_args}")
 
 ext_modules = [
     Pybind11Extension("mergescan",
-        ["src/main.cpp", "src/ThreadPool.cpp"],
+        ["src/main.cpp"],
         # Example: passing in the version to the compiled code
         #define_macros = [('VERSION_INFO', __version__)],
         cxx_std=17,
