@@ -10,6 +10,7 @@
 #include <open3d/io/ImageIO.h>
 #include <open3d/pipelines/registration/GeneralizedICP.h>
 #include <open3d/pipelines/registration/ColoredICP.h>
+#include <open3d/io/TriangleMeshIO.h>
 #include <geometry/BoundingVolume.h>
 #include <geometry/Geometry.h>
 #include <geometry/Image.h>
@@ -232,11 +233,14 @@ struct TriangleMesh : public std::shared_ptr<geometry::TriangleMesh> {
   TriangleMesh FilterSmoothTaubin(int number_of_iterations, double lambda_filter, double mu) {
     pybind11::gil_scoped_release release;
     auto filtered = (*this)->FilterSmoothTaubin(number_of_iterations, lambda_filter, mu);
+    // there seems to be some points with color out of [0,1] range
     for(auto& color: filtered->vertex_colors_) {
       color[0] = std::max(0.0, std::min(1.0, color[0]));
       color[1] = std::max(0.0, std::min(1.0, color[1]));
       color[2] = std::max(0.0, std::min(1.0, color[2]));
     }
+    // and even worse... this function creates NAN vertices!!!!
+    filtered->RemoveUnreferencedVertices();
     return filtered;
   }
 
@@ -269,6 +273,15 @@ struct TriangleMesh : public std::shared_ptr<geometry::TriangleMesh> {
     mesh->vertex_colors_ = (*this)->vertex_colors_;
     std::swap(mesh->triangle_uvs_, triangle_uvs);
     return mesh;
+  }
+  bool Write(const std::string &filename,
+                        bool write_ascii /* = false*/,
+                        bool compressed /* = false*/,
+                        bool write_vertex_normals /* = true*/,
+                        bool write_vertex_colors /* = true*/,
+                        bool write_triangle_uvs /* = true*/,
+                        bool print_progress /* = false*/) {
+    return io::WriteTriangleMesh(filename, **this, true, true);
   }
 };
 
@@ -594,6 +607,7 @@ PYBIND11_MODULE(mergescan, m) {
         py::arg("mu") = -0.53)
       .def("simplify", &TriangleMesh::simplify)
       .def("transform", &TriangleMesh::transform)
+      //.def("write", &TriangleMesh::Write)
       .def("with_triangle_uvs", &TriangleMesh::with_triangle_uvs)
       ;
 
