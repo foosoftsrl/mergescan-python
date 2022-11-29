@@ -15,7 +15,6 @@
 #include <geometry/Image.h>
 #include <geometry/RGBDImage.h>
 #include <geometry/PointCloud.h>
-#include "ThreadPool.h"
 
 extern "C" {
 #include <libswscale/swscale.h>
@@ -27,8 +26,6 @@ extern "C" {
 using namespace std;
 using namespace open3d;
 namespace py = pybind11;
-
-ThreadPool threadPool(8);
 
 // Create a Python object that will free the allocated memory when destroyed:
 template <class T>
@@ -81,22 +78,22 @@ static py::array_t<T> makePyArray(const T* data, int width, int height, int plan
         free_when_done); // numpy array references this parent
 }
 
-struct DepthImage : public JoinableFuture<geometry::Image> {
-  DepthImage(JoinableFuture<geometry::Image>&& future) 
-	  : JoinableFuture<geometry::Image>(future) 
+struct DepthImage : public std::shared_ptr<geometry::Image> {
+  DepthImage(std::shared_ptr<geometry::Image>&& future) 
+	  : std::shared_ptr<geometry::Image>(future) 
   {
   }
 
   int width() {
-    return get().width_;
+    return (*this)->width_;
   }
 
   int height() {
-    return get().height_;
+    return (*this)->height_;
   }
 
   py::array_t<float> data() {
-    return makePyArray((float*)get().data_.data(), width(), height());
+    return makePyArray((float*)((*this)->data_).data(), width(), height());
   }
 
   static DepthImage fromData(py::array_t<float, py::array::c_style | py::array::forcecast> array) {
@@ -112,14 +109,11 @@ struct DepthImage : public JoinableFuture<geometry::Image> {
     float* src = static_cast<float*>(buf.ptr);
     float* dst = reinterpret_cast<float*>(depth.data_.data());
     memcpy(dst, src, width * height * sizeof(float));
-    auto future = JoinableFuture<geometry::Image>();
-    future.setValue(depth);
-    return future;
+    return std::make_shared<geometry::Image>(std::move(depth));
   }
 
   static DepthImage load(const std::string& path, float min, float max) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([path, min, max]() -> geometry::Image {
       geometry::Image img;
       if(!io::ReadImageFromPNG(path, img)) {
          throw std::runtime_error("Failed loading image");
@@ -141,32 +135,30 @@ struct DepthImage : public JoinableFuture<geometry::Image> {
         else
           dest[i] = min + s * scale;
       }
-      return depth;
-   });
+      return std::make_shared<geometry::Image>(std::move(depth));
   }
 };
 
-struct Image : public JoinableFuture<geometry::Image> {
-  Image(JoinableFuture<geometry::Image>&& future) 
-	  : JoinableFuture<geometry::Image>(future) 
+struct Image : public std::shared_ptr<geometry::Image> {
+  Image(std::shared_ptr<geometry::Image>&& future) 
+	  : std::shared_ptr<geometry::Image>(future) 
   {
   }
 
   int width() {
-    return get().width_;
+    return get()->width_;
   }
 
   int height() {
-    return get().height_;
+    return get()->height_;
   }
 
   py::array_t<uint8_t> data() {
-    return makePyArray((uint8_t*)get().data_.data(), width(), height(), get().num_of_channels_);
+    return makePyArray((uint8_t*)get()->data_.data(), width(), height(), get()->num_of_channels_);
   }
 
   static Image load(const std::string& path) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([path]() -> geometry::Image {
       geometry::Image img;
       if(!io::ReadImageFromJPG(path, img)) {
          throw std::runtime_error("Failed loading image");
@@ -177,115 +169,99 @@ struct Image : public JoinableFuture<geometry::Image> {
       if(img.num_of_channels_ != 3) {
         throw std::runtime_error("Not a RGB image");
       }
-      return img;
-   });
+      return std::make_shared<geometry::Image>(std::move(img));
   }
 
   Image resize(int width, int height) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, width, height]() -> geometry::Image {
-      geometry::Image& selfImg = (geometry::Image&)Self.get();
       geometry::Image img;
       img.Prepare(width, height, 3, 1);
-      auto resizeContext= sws_getContext(selfImg.width_, selfImg.height_, AV_PIX_FMT_RGB24, width, height, AV_PIX_FMT_RGB24, 0, NULL, NULL, NULL);
-      uint8_t *srcPlanes[1] = {(uint8_t*)selfImg.data_.data()};
+      auto resizeContext= sws_getContext((*this)->width_, (*this)->height_, AV_PIX_FMT_RGB24, width, height, AV_PIX_FMT_RGB24, 0, NULL, NULL, NULL);
+      uint8_t *srcPlanes[1] = {(uint8_t*)(*this)->data_.data()};
       uint8_t *dstPlanes[1] = {(uint8_t*)img.data_.data()};
-      int srcStrides[1] = {selfImg.width_ * 3};
+      int srcStrides[1] = {(*this)->width_ * 3};
       int dstStrides[1] = {img.width_ * 3};
-      sws_scale(resizeContext, srcPlanes, srcStrides, 0, selfImg.height_, dstPlanes, dstStrides);      
+      sws_scale(resizeContext, srcPlanes, srcStrides, 0, (*this)->height_, dstPlanes, dstStrides);      
       sws_freeContext(resizeContext);
-      return img;
-   }, *this);
+      return std::make_shared<geometry::Image>(std::move(img));
   }
 };
 
-struct PointCloud : public JoinableFuture<std::shared_ptr<geometry::PointCloud>> {
+struct PointCloud : public std::shared_ptr<geometry::PointCloud> {
   PointCloud() {
 
   }
 
-  PointCloud(JoinableFuture<std::shared_ptr<geometry::PointCloud>> &&future) : JoinableFuture<std::shared_ptr<geometry::PointCloud>>(future)
+  PointCloud(std::shared_ptr<geometry::PointCloud> &&future) : std::shared_ptr<geometry::PointCloud>(future)
   {
   }
 
   PointCloud removeStatisticalOutliers(int nb_neighbors, double std_ratio)
   {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([future = *this, nb_neighbors, std_ratio]()
-                             { return ::get<0>(future.get()->RemoveStatisticalOutliers(nb_neighbors, std_ratio, false)); },
-                             *this);
+      return ::get<0>((*this)->RemoveStatisticalOutliers(nb_neighbors, std_ratio, false));
   }
 
   py::array_t<double> points()
   {
-    auto &points = get()->points_;
+    auto &points = (*this)->points_;
     return makePyArray((const double *)points.data(), 3, points.size());
   }
 
   py::array_t<double> normals()
   {
-    auto &normals = get()->normals_;
+    auto &normals = (*this)->normals_;
     return makePyArray((const double *)normals.data(), 3, normals.size());
   }
 
   py::array_t<uint8_t> colors()
   {
-    auto &colors = get()->colors_;
+    auto &colors = (*this)->colors_;
     return makePyArray((const uint8_t*)colors.data(), 3, colors.size());
   }
 
   size_t size()
   {
-    return get()->points_.size();
+    return (*this)->points_.size();
   }
 
   static PointCloud fromDepth(DepthImage depth, double width, double height, double fx, double fy, double cx, double cy) {
     pybind11::gil_scoped_release release;
     camera::PinholeCameraIntrinsic intrinsics(width,height,fx,fy,cx,cy);
-    return threadPool.submit([depth, intrinsics]() -> std::shared_ptr<geometry::PointCloud> {
-        return geometry::PointCloud::CreateFromDepthImage(depth.get(), intrinsics, Eigen::Matrix4d::Identity());
-    }, depth);
+    return geometry::PointCloud::CreateFromDepthImage((*depth), intrinsics, Eigen::Matrix4d::Identity());
   }
 
   static PointCloud fromRGBD(Image img, DepthImage depth, double width, double height, double fx, double fy, double cx, double cy) {
     pybind11::gil_scoped_release release;
     camera::PinholeCameraIntrinsic intrinsics(width,height,fx,fy,cx,cy);
-    return threadPool.submit([img, depth, intrinsics]() -> std::shared_ptr<geometry::PointCloud> {
-        geometry::RGBDImage rgbd(img.get(), depth.get());
-        return geometry::PointCloud::CreateFromRGBDImage(rgbd, intrinsics, Eigen::Matrix4d::Identity());
-    }, depth, img);
+    geometry::RGBDImage rgbd(*img, *depth);
+    return geometry::PointCloud::CreateFromRGBDImage(rgbd, intrinsics, Eigen::Matrix4d::Identity());
   }
 
   friend PointCloud operator+(PointCloud p1, PointCloud p2) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([p1, p2]() -> std::shared_ptr<geometry::PointCloud> {
       auto transformed = std::make_shared<geometry::PointCloud>();
       *transformed.get() = *p1.get();
       *transformed.get() += *p2.get();
       return transformed;
-    }, p1,p2);
   }
   
   PointCloud transform(const Eigen::Matrix4d& transform) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, transform]() -> std::shared_ptr<geometry::PointCloud> {
       auto transformed = std::make_shared<geometry::PointCloud>();
-      transformed->points_ = Self.get()->points_;
-      transformed->colors_ = Self.get()->colors_;
-      transformed->normals_ = Self.get()->normals_;
+      transformed->points_ = (*this)->points_;
+      transformed->colors_ = (*this)->colors_;
+      transformed->normals_ = (*this)->normals_;
       transformed->Transform(transform);
       return transformed;
-    }, *this);
   }
 
   PointCloud crop(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, minX, minY, minZ, maxX, maxY, maxZ]() -> std::shared_ptr<geometry::PointCloud> {
       auto transformed = std::make_shared<geometry::PointCloud>();
-      auto original = Self.get();
-      auto& points = original->points_;
-      auto& normals = original->normals_;
-      auto& colors = original->colors_;
+      auto& points = (*this)->points_;
+      auto& normals = (*this)->normals_;
+      auto& colors = (*this)->colors_;
       for(size_t i = 0; i < points.size(); i++) {
         auto& point = points[i];
         if (point(0) >= minX && point(0) <= maxX &&
@@ -299,16 +275,13 @@ struct PointCloud : public JoinableFuture<std::shared_ptr<geometry::PointCloud>>
         }
       }
       return transformed;
-    }, *this);
   }
 
   PointCloud filterBackground(double backgroundDistance) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, backgroundDistance]() -> std::shared_ptr<geometry::PointCloud> {
       auto transformed = std::make_shared<geometry::PointCloud>();
-      auto original = Self.get();
-      auto& points = original->points_;
-      auto& colors = original->colors_;
+      auto& points = (*this)->points_;
+      auto& colors = (*this)->colors_;
       double maxDepth = -1e7;
       for(const auto& point: points) {
         maxDepth = std::max(maxDepth, point(2));
@@ -324,16 +297,13 @@ struct PointCloud : public JoinableFuture<std::shared_ptr<geometry::PointCloud>>
         }
       }
       return transformed;
-    }, *this);
   }
 
   PointCloud estimateNormals(double radius, int max_nn) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, radius, max_nn]() -> std::shared_ptr<geometry::PointCloud> {
       auto transformed = std::make_shared<geometry::PointCloud>();
-      auto original = Self.get();
-      transformed->points_ = original->points_;
-      transformed->colors_ = original->colors_;
+      transformed->points_ = (*this)->points_;
+      transformed->colors_ = (*this)->colors_;
       transformed->EstimateNormals(open3d::geometry::KDTreeSearchParamHybrid(radius, max_nn));
       for(auto& normal: transformed->normals_) {
         if(normal(2) < 0) {
@@ -341,18 +311,14 @@ struct PointCloud : public JoinableFuture<std::shared_ptr<geometry::PointCloud>>
         } 
       }
       return transformed;
-    }, *this);
   }
 
   PointCloud filterByNormalAngle(double x, double y, double z, double threshold) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, x, y, z,threshold]() -> std::shared_ptr<geometry::PointCloud> {
       auto transformed = std::make_shared<geometry::PointCloud>();
-      auto original = Self.get();
-      // this is a hack...
-      auto& normals = original->normals_;
-      auto& points = original->points_;
-      auto& colors = original->colors_;
+      auto& normals = (*this)->normals_;
+      auto& points = (*this)->points_;
+      auto& colors = (*this)->colors_;
       if(points.size() != normals.size()) {
         fprintf(stderr, "Uhm... normal and points arrays have different sizes: normals = %d points = %d\n", (int)normals.size(), (int)points.size());
         throw std::runtime_error("Filter with normals: Uhm... normal and points arrays have different sizes");
@@ -368,17 +334,14 @@ struct PointCloud : public JoinableFuture<std::shared_ptr<geometry::PointCloud>>
         }
       }
       return transformed;
-    }, *this);
   }
 
   PointCloud selectByIndex(const std::vector<size_t> &indices) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, indices]() -> std::shared_ptr<geometry::PointCloud> {
-      auto original = Self.get();
       auto filtered = std::make_shared<geometry::PointCloud>();
-      const auto& orgNormals = original->normals_;
-      const auto& orgPoints = original->points_;
-      const auto& orgColors = original->colors_;
+      const auto& orgNormals = (*this)->normals_;
+      const auto& orgPoints = (*this)->points_;
+      const auto& orgColors = (*this)->colors_;
       for(const auto index : indices) {
           filtered->points_.push_back(orgPoints[index]);
           if(!orgNormals.empty())
@@ -387,73 +350,62 @@ struct PointCloud : public JoinableFuture<std::shared_ptr<geometry::PointCloud>>
             filtered->colors_.push_back(orgColors[index]);
       }
       return filtered;
-    }, *this);
   }
 
   PointCloud voxelDownSample(double voxel_size) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, voxel_size]() -> std::shared_ptr<geometry::PointCloud> {
-      return Self.get()->VoxelDownSample(voxel_size);
-    }, *this);
+      return (*this)->VoxelDownSample(voxel_size);
   }
   PointCloud randomDownSample(double pct) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, pct]() -> std::shared_ptr<geometry::PointCloud> {
-      return Self.get()->RandomDownSample(pct);
-    }, *this);
+      return (*this)->RandomDownSample(pct);
   }
   PointCloud randomDownSampleMax(int count) {
       pybind11::gil_scoped_release release;
-      return threadPool.submit([Self = *this, count]() -> std::shared_ptr<geometry::PointCloud> {
-      auto original = Self.get();
-      if(original->points_.size() > count) {
-        return original->RandomDownSample(double(count) / original->points_.size());
+      if(size() > count) {
+        return (*this)->RandomDownSample(double(count) / size());
       } else {
-        return original;
+        return *this;
       }
-    }, *this);
-  }
+    };
 };
 
-struct RegistrationResult : public JoinableFuture<open3d::pipelines::registration::RegistrationResult> {
+struct RegistrationResult : public std::shared_ptr<open3d::pipelines::registration::RegistrationResult> {
   RegistrationResult() {
 
   }
 
-  RegistrationResult(JoinableFuture<open3d::pipelines::registration::RegistrationResult> &&future) : JoinableFuture<open3d::pipelines::registration::RegistrationResult>(future)
+  RegistrationResult(std::shared_ptr<open3d::pipelines::registration::RegistrationResult> &&future) : std::shared_ptr<open3d::pipelines::registration::RegistrationResult>(future)
   {
   }
   Eigen::Matrix4d_u transformation() {
-    return get().transformation_;
+    return (*this)->transformation_;
   }
   double fitness() {
-    return get().fitness_;
+    return (*this)->fitness_;
   }
   double inlier_rmse() {
-    return get().inlier_rmse_;
+    return (*this)->inlier_rmse_;
   }
 };
 
-RegistrationResult icp(PointCloud p1, PointCloud p2, double radius, const Eigen::Matrix4d& current_transformation, const open3d::pipelines::registration::ICPConvergenceCriteria& convergenceCriteria) {
-      pybind11::gil_scoped_release release;
-      return threadPool.submit([p1, p2, radius,current_transformation, convergenceCriteria]() -> open3d::pipelines::registration::RegistrationResult {
-    auto result = open3d::pipelines::registration::RegistrationICP(*p1.get(), *p2.get(), radius, current_transformation,
+RegistrationResult icp(PointCloud p1, PointCloud p2, double radius, const Eigen::Matrix4d& current_transformation, const open3d::pipelines::registration::ICPConvergenceCriteria& convergenceCriteria) 
+{
+  pybind11::gil_scoped_release release;
+  auto result = open3d::pipelines::registration::RegistrationICP(*p1.get(), *p2.get(), radius, current_transformation,
     open3d::pipelines::registration::TransformationEstimationPointToPoint(false),
     convergenceCriteria
-    );
-    return result;
-  }, p1, p2);
+  );
+  return std::make_shared<open3d::pipelines::registration::RegistrationResult>(result);
 }
 
 RegistrationResult coloredIcp(PointCloud p1, PointCloud p2, double radius, const Eigen::Matrix4d& current_transformation, const open3d::pipelines::registration::ICPConvergenceCriteria& convergenceCriteria) {
-      pybind11::gil_scoped_release release;
-      return threadPool.submit([p1, p2, radius,current_transformation, convergenceCriteria]() -> open3d::pipelines::registration::RegistrationResult {
-    auto result = open3d::pipelines::registration::RegistrationColoredICP(*p1.get(), *p2.get(), radius, current_transformation,
+  pybind11::gil_scoped_release release;
+  auto result = open3d::pipelines::registration::RegistrationColoredICP(*p1.get(), *p2.get(), radius, current_transformation,
     open3d::pipelines::registration::TransformationEstimationForColoredICP(0.95),
     convergenceCriteria
-    );
-    return result;
-  }, p1, p2);
+  );
+  return std::make_shared<open3d::pipelines::registration::RegistrationResult>(result);
 }
 
 
