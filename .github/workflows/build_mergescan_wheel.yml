@@ -1,0 +1,35 @@
+name: "Build Mergescan Wheels"
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  wheels:
+    name: Build ${{ matrix.os }} wheels
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04,macos-12]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: ilammy/setup-nasm@v1
+
+    - name: Build wheels
+      uses: pypa/cibuildwheel@v2.11.2
+      env:
+        CIBW_SKIP: "cp27-* cp36-* cp37-* pp* *-win32 *-manylinux_i686 *-musllinux_*"
+        CIBW_BEFORE_ALL: pip install cmake>=3.5
+        CIBW_BEFORE_ALL_LINUX: yum install -y devtoolset-10-libatomic-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel mesa-libGLU-devel
+        CIBW_BUILD_VERBOSITY_LINUX: 3
+        CIBW_BUILD_VERBOSITY_MACOS: 3
+        CIBW_ARCHS_MACOS: "arm64 x86_64"
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wheelhouse-${{ matrix.os }}
+        path: ./wheelhouse/*.whl
+
