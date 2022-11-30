@@ -72,21 +72,40 @@ if platform.system() == "Darwin":
 print(f"extra_link_args = {extra_link_args}")
 
 ext_modules = [
-    Pybind11Extension("mergescan",
-        ["src/main.cpp"],
+    Pybind11Extension("open3d",
+        [
+          f"src/open3d_pybind.cpp",
+          f"{builddir}/Open3D/cpp/pybind/geometry/kdtreeflann.cpp",
+          f"{builddir}/Open3D/cpp/pybind/geometry/pointcloud.cpp",
+          f"{builddir}/Open3D/cpp/pybind/geometry/trianglemesh.cpp",
+          f"{builddir}/Open3D/cpp/pybind/geometry/meshbase.cpp",
+          f"{builddir}/Open3D/cpp/pybind/geometry/image.cpp",
+          f"{builddir}/Open3D/cpp/pybind/camera/camera.cpp",
+          f"{builddir}/Open3D/cpp/pybind/utility/utility.cpp",
+          f"{builddir}/Open3D/cpp/pybind/utility/eigen.cpp",
+          f"{builddir}/Open3D/cpp/pybind/utility/random.cpp",
+          f"{builddir}/Open3D/cpp/pybind/utility/logging.cpp",
+          f"{builddir}/Open3D/cpp/pybind/docstring.cpp",
+          f"{builddir}/Open3D/cpp/pybind/pipelines/registration/registration.cpp",
+          f"{builddir}/Open3D/cpp/pybind/pipelines/registration/robust_kernels.cpp",
+          f"{builddir}/Open3D/cpp/pybind/pipelines/registration/global_optimization.cpp",
+          f"{builddir}/Open3D/cpp/pybind/pipelines/registration/feature.cpp"
+        ],
         # Example: passing in the version to the compiled code
         #define_macros = [('VERSION_INFO', __version__)],
         cxx_std=17,
         include_dirs=[
            f"{builddir}/sysroot/include",
            f"{builddir}/sysroot/include/open3d/3rdparty",
-           f"{builddir}/sysroot/include/open3d"
+           f"{builddir}/sysroot/include/open3d",
+           f"{builddir}/Open3D/cpp"
            ],
+        extra_compile_args=["-DPYBIND11_DETAILED_ERROR_MESSAGES"],
         extra_link_args = extra_link_args
         ),
 ]
 
-setup(name='mergescan',
+setup(name='open3d',
       version='0.0.0',
       description='Mergescan native module',
       long_description=long_description,

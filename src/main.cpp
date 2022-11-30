@@ -631,6 +631,11 @@ PYBIND11_MODULE(mergescan, m) {
         py::arg("width"),py::arg("height"),
         py::arg("fx"),py::arg("fy"),
         py::arg("cx"),py::arg("cy"))
+      .def("__repr__",
+                 [](const PointCloud &pcd) {
+                     return std::string("PointCloud with ") +
+                            std::to_string(pcd->points_.size()) + " points.";
+                 })
       .def("size", &PointCloud::size)
       .def_property_readonly("points", &PointCloud::points)
       .def_property_readonly("normals", &PointCloud::normals)
@@ -677,8 +682,17 @@ PYBIND11_MODULE(mergescan, m) {
     py::class_<RegistrationResult>(m, "RegistrationResult")
       .def_property_readonly("transformation", &RegistrationResult::transformation)
       .def_property_readonly("fitness", &RegistrationResult::fitness)
-      .def_property_readonly("inlier_rmse", &RegistrationResult::inlier_rmse);
-
+      .def_property_readonly("inlier_rmse", &RegistrationResult::inlier_rmse)
+      .def("__repr__", [](const RegistrationResult &rr) {
+          return fmt::format(
+                  "RegistrationResult with "
+                  "fitness={:e}"
+                  ", inlier_rmse={:e}"
+                  ", and correspondence_set size of {:d}"
+                  "\nAccess transformation to get result.",
+                  rr->fitness_, rr->inlier_rmse_,
+                  rr->correspondence_set_.size());
+      });
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else
