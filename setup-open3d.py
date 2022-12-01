@@ -91,8 +91,7 @@ ext_modules = [
           f"{builddir}/Open3D/cpp/pybind/pipelines/registration/global_optimization.cpp",
           f"{builddir}/Open3D/cpp/pybind/pipelines/registration/feature.cpp"
         ],
-        # Example: passing in the version to the compiled code
-        #define_macros = [('VERSION_INFO', __version__)],
+        define_macros = [('-D_GLIBCXX_USE_CXX11_ABI', 1)],
         cxx_std=17,
         include_dirs=[
            f"{builddir}/sysroot/include",
