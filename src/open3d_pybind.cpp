@@ -200,6 +200,7 @@ static void pybind_geometry(py::module& m) {
     open3d::geometry::pybind_pointcloud(m_submodule);
     open3d::geometry::pybind_trianglemesh(m_submodule);
     pybind_image(m_submodule);
+    open3d::geometry::pybind_boundingvolume(m_submodule);
 }
 
 static void pybind_pipelines(py::module& m) {

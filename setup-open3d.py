@@ -80,6 +80,7 @@ ext_modules = [
           f"{builddir}/Open3D/cpp/pybind/geometry/trianglemesh.cpp",
           f"{builddir}/Open3D/cpp/pybind/geometry/meshbase.cpp",
           f"{builddir}/Open3D/cpp/pybind/geometry/image.cpp",
+          f"{builddir}/Open3D/cpp/pybind/geometry/boundingvolume.cpp",
           f"{builddir}/Open3D/cpp/pybind/camera/camera.cpp",
           f"{builddir}/Open3D/cpp/pybind/utility/utility.cpp",
           f"{builddir}/Open3D/cpp/pybind/utility/eigen.cpp",
